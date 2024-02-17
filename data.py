@@ -5,8 +5,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image
-
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 start_time = pd.to_datetime('2023-01-01 00:00:00+00:00')
 end_time = pd.to_datetime('2024-01-01 00:00:00+00:00')
@@ -31,11 +31,11 @@ def preprocess_dataframe(dataFrame):
     return dataFrame
 
 
-def lineplot_for_data(dataFrame, name_of_plot, column_to_plot):
+def lineplot_for_data(dataFrame, name_of_plot, column_to_plot, colour):
     # Plot the data
     sns.set(style="whitegrid")
     sns.lineplot(x='Start', y= column_to_plot, \
-                 data = dataFrame,label = name_of_plot)
+                 data = dataFrame,label = name_of_plot, color = colour)
     plt.title('Energy Consumption Over Time')
     plt.xlabel('Time')
     plt.ylabel(column_to_plot)
@@ -71,8 +71,8 @@ elecDataFrame = elecDataFrame[(elecDataFrame['Start'] >= start_time) \
 gasDataFrame = gasDataFrame[(gasDataFrame['Start'] >= start_time) \
                               & (gasDataFrame['Start'] <= end_time)]
 
-lineplot_for_data(elecDataFrame, "elec", 'Consumption (kWh)')
-lineplot_for_data(gasDataFrame, "gas", 'Consumption (kWh)')
+lineplot_for_data(elecDataFrame, "elec", 'Consumption (kWh)', 'red')
+lineplot_for_data(gasDataFrame, "gas", 'Consumption (kWh)', 'blue')
 plt.savefig('plots/plot_dataFrame_elec_gas.png')
 plt.close()
 
@@ -81,8 +81,8 @@ cost_data(gasDataFrame, 0.0731)
 standing_charge_elec = standing_charge(elecDataFrame, 0.42, duration_in_days)
 standing_charge_gas = standing_charge(gasDataFrame,0.2747, duration_in_days)
 
-lineplot_for_data(elecDataFrame, "elec", 'Consumption (£)')
-lineplot_for_data(gasDataFrame, "gas", 'Consumption (£)')
+lineplot_for_data(elecDataFrame, "elec", 'Consumption (£)', 'red')
+lineplot_for_data(gasDataFrame, "gas", 'Consumption (£)', 'blue')
 plt.savefig('plots/plot_dataFrame_elec_gas_cost.png')
 plt.close()
 
@@ -99,6 +99,7 @@ def reportdata(dataFrame, plottype, standing_charge):
     total_consumption_cost = dataFrame['Consumption (£)'].sum()
     average_consumption_cost = dataFrame['Consumption (£)'].mean()
     max_consumption_cost = dataFrame['Consumption (£)'].max()
+    total_charge = standing_charge+total_consumption_cost
 
     # Add key statistics to the report
     key_statistics = [
@@ -108,15 +109,28 @@ def reportdata(dataFrame, plottype, standing_charge):
         ["Total Consumption " +str(plottype), f"£{total_consumption_cost:.2f}"],
         ["Average Consumption "+str(plottype), f"£{average_consumption_cost:2f}"],
         ["Maximum Consumption "+str(plottype), f"£{max_consumption_cost:.2f}"],
-        ["Standing Charge "+str(plottype), f"£{standing_charge:.2f}"]
+        ["Standing Charge "+str(plottype), f"£{standing_charge:.2f}"],
+        ["Total Charge "+str(plottype), f"£{total_charge:.2f}"]
     ]
-    return key_statistics
+    return key_statistics, total_charge
 
-key_statistics_elec = reportdata(elecDataFrame, "elec", standing_charge_elec)
-key_statistics_gas = reportdata(gasDataFrame, "gas", standing_charge_gas)
+key_statistics_elec, total_charge_elec = reportdata(elecDataFrame, "elec", standing_charge_elec)
+key_statistics_gas, total_charge_gas = reportdata(gasDataFrame, "gas", standing_charge_gas)
+
+total_charge_gas_elec = total_charge_elec+total_charge_gas
+total_charge_list = [
+    ["Total Charge for elec and gas", f"£{total_charge_gas_elec:.2f}"],
+    ["Total Charge for elec and gas (monthly)", f"£{total_charge_gas_elec/12:.2f}"]
+    ]
+
+# Add title and subtitle to the report
+title = "Energy Consumption Report"
+content.append(Paragraph(title, getSampleStyleSheet()['Title']))
+content.append(Spacer(1, 12))
 
 content.append(Table(key_statistics_elec, colWidths=[200, 100]))
 content.append(Table(key_statistics_gas, colWidths=[200, 100]))
+content.append(Table(total_charge_list, colWidths=[200, 100]))
 
 # Add plot to the report using Image class
 content.append(Image('plots/plot_dataFrame_elec_gas_cost.png', width=400, height=300))
@@ -132,8 +146,9 @@ style = TableStyle([
     ('GRID', (0, 0), (-1, -1), 1, colors.black),
 ])
 
-content[0].setStyle(style)
-content[1].setStyle(style)
+content[2].setStyle(style)
+content[3].setStyle(style)
+content[4].setStyle(style)
 
 # Build the PDF report
 doc.build(content)
